@@ -1,0 +1,15 @@
+{
+  "name": "마트 예산 계산기",
+  "short_name": "마트계산기",
+  "description": "예산에 맞춰 장보기 금액을 계산합니다",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EEF2F1",
+  "theme_color": "#1D6B5A",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

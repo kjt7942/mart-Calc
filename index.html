@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>마트 예산 계산기</title>
+<meta name="theme-color" content="#1D6B5A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="마트계산기">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+/* Layout: 상단 고정 예산판(예산·합계·남은 금액) → 담은 품목 → 추가 입력 → 가격표·저장 목록. 한 칼럼, 손가락 크기 버튼. */
+:root{
+  --bg:#EEF2F1; --surface:#FFFFFF; --ink:#16282A; --muted:#5B6E70; --line:#D5DFDD;
+  --accent:#1D6B5A; --accent-ink:#FFFFFF; --accent-soft:#DCEFE9;
+  --good:#2F6B3A; --warn:#8A5A00; --warn-soft:#F8EBC8; --bad:#B3321F; --bad-soft:#F8E1DC; --ok-soft:#DDEFE0;
+  --font:"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0F1A1B; --surface:#172627; --ink:#E4EEEC; --muted:#93A8A6; --line:#2A3E40;
+  --accent:#5CC4A8; --accent-ink:#06201A; --accent-soft:#1B3A34;
+  --good:#8CCB97; --warn:#E5BC62; --warn-soft:#3A2F12; --bad:#F08A78; --bad-soft:#3E1F1A; --ok-soft:#1D3322; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1A1B; --surface:#172627; --ink:#E4EEEC; --muted:#93A8A6; --line:#2A3E40;
+  --accent:#5CC4A8; --accent-ink:#06201A; --accent-soft:#1B3A34;
+  --good:#8CCB97; --warn:#E5BC62; --warn-soft:#3A2F12; --bad:#F08A78; --bad-soft:#3E1F1A; --ok-soft:#1D3322; color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.5;
+  padding:0 0 calc(40px + env(safe-area-inset-bottom,0px));-webkit-tap-highlight-color:transparent}
+.dash{position:sticky;top:0;z-index:5;background:var(--surface);border-bottom:1px solid var(--line);
+  padding:calc(10px + env(safe-area-inset-top,0px)) 16px 12px;transition:background .2s}
+.dash[data-s="warn"]{background:var(--warn-soft)}
+.dash[data-s="bad"]{background:var(--bad-soft)}
+.dash-in{max-width:560px;margin:0 auto}
+.row{display:flex;gap:12px;align-items:flex-end;justify-content:space-between}
+.budget{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.budget span,.small{font-size:12px;color:var(--muted)}
+.budget input{font:inherit;font-size:20px;font-weight:700;width:100%;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--bg);color:var(--ink);font-variant-numeric:tabular-nums}
+.sum{text-align:right;flex:1;min-width:0}
+.sum b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.remain{margin-top:8px;display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.remain .lbl{font-size:13px;color:var(--muted)}
+.remain b{font-size:34px;line-height:1.1;font-variant-numeric:tabular-nums}
+.dash[data-s="ok"] .remain b{color:var(--good)}
+.dash[data-s="warn"] .remain b{color:var(--warn)}
+.dash[data-s="bad"] .remain b{color:var(--bad)}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s,background .2s}
+.dash[data-s="warn"] .bar i{background:var(--warn)}
+.dash[data-s="bad"] .bar i{background:var(--bad)}
+.hint{margin:8px 0 0;font-size:14px}
+.hint:empty{display:none}
+main{max-width:560px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:16px}
+h2{margin:0 0 8px;font-size:13px;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.item{padding:12px 14px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:auto 1fr auto;gap:8px 12px;align-items:center}
+.item:last-child{border-bottom:0}
+.item.off .nm,.item.off .tot{text-decoration:line-through;color:var(--muted)}
+.item input[type=checkbox]{width:24px;height:24px;accent-color:var(--accent)}
+.nm{font-weight:600;overflow-wrap:anywhere;min-width:0}
+.tot{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ctl{grid-column:2 / 4;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ctl .px{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:14px}
+.ctl .px input{width:92px}
+.qty{display:flex;align-items:center;gap:6px;margin-left:auto}
+.qty output{min-width:2.2em;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+.stepper{width:44px;height:44px;border-radius:10px;font-size:22px;line-height:1;padding:0}
+input[type=text],input[type=number]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0;width:100%}
+.item input[type=number]{padding:8px 8px;text-align:right}
+button{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer;min-height:44px;touch-action:manipulation}
+button:active{background:var(--accent-soft)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+button.ghost{border-color:transparent;background:none;color:var(--muted);min-height:36px;padding:6px 10px;font-size:14px}
+button.del{color:var(--bad)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.empty{padding:22px 16px;color:var(--muted);text-align:center}
+.add{padding:14px;display:grid;grid-template-columns:1fr 1fr 84px;gap:10px}
+.add .name{grid-column:1/4}
+.add button{grid-column:1/4}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);min-width:0}
+details.card>summary{padding:14px;font-weight:600;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::after{content:"펼치기";font-size:12px;color:var(--muted);font-weight:400}
+details.card[open]>summary::after{content:"접기"}
+.inner{padding:0 14px 14px;display:flex;flex-direction:column;gap:10px}
+.plist{display:flex;flex-direction:column}
+.p{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}
+.p:last-child{border-bottom:0}
+.p .t{min-width:0;overflow-wrap:anywhere}
+.p .t small{display:block;color:var(--muted)}
+.p button{flex:none}
+textarea{font:inherit;font-size:13px;width:100%;min-height:96px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;font-family:ui-monospace,monospace}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.msg{font-size:13px;color:var(--muted);min-height:1em}
+.foot{text-align:center;color:var(--muted);font-size:12px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="dash" id="dash" data-s="ok">
+  <div class="dash-in">
+    <div class="row">
+      <label class="budget" for="budget"><span>예산(원)</span><input id="budget" type="number" inputmode="numeric" placeholder="예: 250000" min="0"></label>
+      <div class="sum"><span class="small">현재 합계</span><b id="total">0원</b></div>
+    </div>
+    <div class="remain"><span class="lbl" id="remLbl">남은 금액</span><b id="remain">0원</b></div>
+    <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+    <p class="hint" id="hint" role="status"></p>
+  </div>
+</div>
+
+<main>
+  <section>
+    <h2>담은 품목 <span id="cnt" class="small"></span></h2>
+    <div class="card" id="list"></div>
+    <div class="btns" style="margin-top:8px">
+      <button type="button" class="ghost del" id="clearAll">목록 비우기</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>품목 추가</h2>
+    <form class="card add" id="addForm" autocomplete="off">
+      <label class="f name" for="aName">품목<input id="aName" type="text" list="names" placeholder="이름을 입력하면 가격표에서 찾습니다" enterkeyhint="next"></label>
+      <label class="f" for="aPrice">단가(원)<input id="aPrice" type="number" inputmode="numeric" min="0" placeholder="0"></label>
+      <label class="f" for="aQty">개수<input id="aQty" type="number" inputmode="numeric" min="1" value="1"></label>
+      <label class="f" for="aPad">&nbsp;<span id="aPad" style="padding:10px 0;font-weight:700;font-variant-numeric:tabular-nums" aria-live="polite">0원</span></label>
+      <button type="submit" class="primary">담기</button>
+    </form>
+    <datalist id="names"></datalist>
+  </section>
+
+  <details class="card" id="pdet">
+    <summary>가격표에서 담기</summary>
+    <div class="inner">
+      <input id="pFilter" type="text" placeholder="품목 검색" aria-label="가격표 검색">
+      <div class="plist" id="plist"></div>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary>저장한 목록</summary>
+    <div class="inner">
+      <div style="display:flex;gap:8px">
+        <input id="lName" type="text" placeholder="목록 이름 (예: 10월 청소용품)" aria-label="목록 이름">
+        <button type="button" class="primary" id="lSave" style="flex:none">저장</button>
+      </div>
+      <div class="plist" id="lists"></div>
+      <div class="msg" id="lMsg" role="status"></div>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary>가격표 가져오기·내보내기</summary>
+    <div class="inner">
+      <p class="small" style="margin:0">구매 장부에서 받은 가격표(JSON)를 붙여 넣고 "가져오기"를 누르세요. 형식: [{"name":"품목","unitPrice":1500,"qty":2}]</p>
+      <textarea id="jbox" aria-label="가격표 JSON" spellcheck="false"></textarea>
+      <div class="btns">
+        <button type="button" id="jImport">가져오기</button>
+        <button type="button" id="jExport">현재 가격표 보기</button>
+        <button type="button" id="jCopy">복사</button>
+      </div>
+      <div class="msg" id="jMsg" role="status"></div>
+    </div>
+  </details>
+
+  <p class="foot">목록과 가격표는 이 휴대폰 안에만 저장됩니다. 인터넷이 없어도 열립니다.</p>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var KEY = 'martcalc.v1';
+  var SEED = [
+    ['고무장갑 미니 S',4000,1],['극세사 크리너(대)',17500,3],['크린랩 고무장갑(대)',3600,5],['크린랩 고무장갑(중)',3200,5],
+    ['키친아트 망사수세미',4500,3],['3M 다목적수세미 5입',9500,5],['세콤마 버블핸드워시',5300,6],['세콤마 핸드워시 레몬',5300,5],
+    ['아이깨끗해 거품형 레몬',6000,2],['아이깨끗해 블루밍',6000,1],['윈덱스 500ml',4300,5],
+    ['종량제봉투 50L(10장)',6500,11],['종량제봉투 75L(10장)',9300,12],['음식물 종량제(칩) 5L',1500,2],
+    ['유광락스 2kg',1500,12],['다끄라 마포걸레',5000,9],['청소기 필터 (COV37263201)',22200,5]
+  ];
+  var S = { budget: 0, items: [], prices: {}, lists: {} };
+
+  function $(id) { return document.getElementById(id); }
+  function won(n) { return Math.round(n).toLocaleString('ko-KR') + '원'; }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+  function norm(s) { return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+  function uid() { return 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) { var o = JSON.parse(raw); if (o && typeof o === 'object') { S.budget = +o.budget || 0; S.items = o.items || []; S.prices = o.prices || {}; S.lists = o.lists || {}; } }
+    } catch (e) {}
+    if (!Object.keys(S.prices).length) SEED.forEach(function (r) { S.prices[norm(r[0])] = { name: r[0], price: r[1], qty: r[2] }; });
+  }
+  var saveT = null;
+  function save() {
+    clearTimeout(saveT);
+    saveT = setTimeout(function () { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }, 150);
+  }
+
+  function lineTotal(it) { return (+it.price || 0) * (+it.qty || 0); }
+  function totals() {
+    var t = 0; S.items.forEach(function (it) { if (it.on) t += lineTotal(it); });
+    return t;
+  }
+
+  function suggestion(over) {
+    var best = null;
+    S.items.forEach(function (it) {
+      if (!it.on || !(+it.price > 0)) return;
+      var k = Math.ceil(over / it.price);
+      if (k <= it.qty) {
+        var waste = k * it.price - over;
+        if (!best || waste < best.waste || (waste === best.waste && k < best.k)) best = { name: it.name, k: k, waste: waste };
+      }
+    });
+    return best;
+  }
+
+  function updateDash() {
+    var t = totals(), b = +S.budget || 0, dash = $('dash');
+    $('total').textContent = won(t);
+    var rem = b - t, state = 'ok';
+    if (b > 0) {
+      state = rem < 0 ? 'bad' : (rem <= b * 0.1 ? 'warn' : 'ok');
+      $('remLbl').textContent = rem < 0 ? '예산 초과' : '남은 금액';
+      $('remain').textContent = won(Math.abs(rem));
+      $('barFill').style.width = Math.min(100, t / b * 100) + '%';
+    } else {
+      $('remLbl').textContent = '예산을 입력하세요';
+      $('remain').textContent = '-';
+      $('barFill').style.width = '0';
+    }
+    dash.setAttribute('data-s', state);
+    var h = '';
+    if (b > 0 && rem < 0) {
+      var s = suggestion(-rem);
+      h = s ? '“' + esc(s.name) + '”을(를) ' + s.k + '개 줄이면 예산에 맞습니다. (줄인 뒤 ' + won(s.waste) + ' 남음)'
+            : '한 품목만 줄여서는 맞지 않습니다. 여러 품목의 개수를 줄여 보세요.';
+    } else if (b > 0 && state === 'warn') {
+      h = '예산의 90%를 넘었습니다.';
+    }
+    $('hint').innerHTML = h;
+    var n = S.items.filter(function (i) { return i.on; }).length;
+    $('cnt').textContent = S.items.length ? '(' + n + '/' + S.items.length + '개 계산 중)' : '';
+  }
+
+  function render() {
+    var L = $('list');
+    if (!S.items.length) {
+      L.innerHTML = '<div class="empty">아직 담은 품목이 없습니다.<br>아래에서 품목을 추가하거나 가격표에서 골라 담으세요.</div>';
+    } else {
+      L.innerHTML = S.items.map(function (it) {
+        return '<div class="item' + (it.on ? '' : ' off') + '" data-id="' + it.id + '">' +
+          '<input type="checkbox" data-a="on"' + (it.on ? ' checked' : '') + ' aria-label="' + esc(it.name) + ' 계산에 포함">' +
+          '<div class="nm">' + esc(it.name) + '</div><div class="tot" data-r="tot">' + won(lineTotal(it)) + '</div>' +
+          '<div class="ctl"><label class="px">단가 <input type="number" inputmode="numeric" min="0" data-a="price" value="' + (it.price || '') + '" aria-label="' + esc(it.name) + ' 단가"></label>' +
+          '<div class="qty"><button type="button" class="stepper" data-a="dec" aria-label="하나 줄이기">−</button><output data-r="qty">' + it.qty + '</output><button type="button" class="stepper" data-a="inc" aria-label="하나 늘리기">+</button></div>' +
+          '<button type="button" class="ghost del" data-a="del">삭제</button></div></div>';
+      }).join('');
+    }
+    updateDash();
+  }
+
+  function refreshRow(el, it) {
+    el.classList.toggle('off', !it.on);
+    el.querySelector('[data-r="tot"]').textContent = won(lineTotal(it));
+    el.querySelector('[data-r="qty"]').textContent = it.qty;
+    updateDash();
+  }
+
+  function addItem(name, price, qty) {
+    name = String(name || '').trim();
+    if (!name) return false;
+    price = Math.max(0, +price || 0); qty = Math.max(1, Math.round(+qty || 1));
+    S.items.push({ id: uid(), name: name, price: price, qty: qty, on: true });
+    if (price > 0) S.prices[norm(name)] = { name: name, price: price, qty: qty };
+    save(); renderPriceList(); renderNames(); render();
+    return true;
+  }
+
+  // 이벤트: 품목 목록
+  $('list').addEventListener('click', function (e) {
+    var a = e.target.getAttribute && e.target.getAttribute('data-a'); if (!a) return;
+    var row = e.target.closest('.item'); if (!row) return;
+    var it = S.items.filter(function (x) { return x.id === row.getAttribute('data-id'); })[0]; if (!it) return;
+    if (a === 'inc') { it.qty = (+it.qty || 0) + 1; refreshRow(row, it); save(); }
+    else if (a === 'dec') { it.qty = Math.max(1, (+it.qty || 1) - 1); refreshRow(row, it); save(); }
+    else if (a === 'del') { S.items = S.items.filter(function (x) { return x !== it; }); save(); render(); }
+  });
+  $('list').addEventListener('input', function (e) {
+    if (e.target.getAttribute('data-a') !== 'price') return;
+    var row = e.target.closest('.item');
+    var it = S.items.filter(function (x) { return x.id === row.getAttribute('data-id'); })[0]; if (!it) return;
+    it.price = Math.max(0, +e.target.value || 0); refreshRow(row, it); save();
+  });
+  $('list').addEventListener('change', function (e) {
+    if (e.target.getAttribute('data-a') !== 'on') return;
+    var row = e.target.closest('.item');
+    var it = S.items.filter(function (x) { return x.id === row.getAttribute('data-id'); })[0]; if (!it) return;
+    it.on = e.target.checked; refreshRow(row, it); save();
+  });
+
+  var clearArmed = false;
+  $('clearAll').addEventListener('click', function () {
+    var b = $('clearAll');
+    if (!S.items.length) return;
+    if (!clearArmed) { clearArmed = true; b.textContent = '정말 비울까요? 한 번 더 누르세요'; setTimeout(function () { clearArmed = false; b.textContent = '목록 비우기'; }, 3000); return; }
+    clearArmed = false; b.textContent = '목록 비우기'; S.items = []; save(); render();
+  });
+
+  $('budget').addEventListener('input', function () { S.budget = Math.max(0, +this.value || 0); updateDash(); save(); });
+
+  // 추가 폼
+  function updatePad() { $('aPad').textContent = won((+$('aPrice').value || 0) * (+$('aQty').value || 0)); }
+  $('aPrice').addEventListener('input', updatePad);
+  $('aQty').addEventListener('input', updatePad);
+  $('aName').addEventListener('input', function () {
+    var p = S.prices[norm(this.value)];
+    if (p) { $('aPrice').value = p.price; $('aQty').value = p.qty || 1; updatePad(); }
+  });
+  $('addForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (addItem($('aName').value, $('aPrice').value, $('aQty').value)) {
+      $('aName').value = ''; $('aPrice').value = ''; $('aQty').value = '1'; updatePad(); $('aName').focus();
+    }
+  });
+
+  function renderNames() {
+    $('names').innerHTML = Object.keys(S.prices).map(function (k) { return '<option value="' + esc(S.prices[k].name) + '"></option>'; }).join('');
+  }
+
+  // 가격표
+  function renderPriceList() {
+    var f = norm($('pFilter').value), keys = Object.keys(S.prices).sort();
+    var h = keys.filter(function (k) { return !f || k.indexOf(f) >= 0; }).map(function (k) {
+      var p = S.prices[k];
+      return '<div class="p"><div class="t">' + esc(p.name) + '<small>' + won(p.price) + ' · 지난번 ' + (p.qty || 1) + '개 (' + won(p.price * (p.qty || 1)) + ')</small></div>' +
+        '<button type="button" data-k="' + esc(k) + '">담기</button></div>';
+    }).join('');
+    $('plist').innerHTML = h || '<div class="empty">가격표가 비어 있습니다.</div>';
+  }
+  $('pFilter').addEventListener('input', renderPriceList);
+  $('plist').addEventListener('click', function (e) {
+    var k = e.target.getAttribute && e.target.getAttribute('data-k'); if (!k) return;
+    var p = S.prices[k]; if (!p) return;
+    var ex = S.items.filter(function (x) { return norm(x.name) === k; })[0];
+    if (ex) { ex.qty = (+ex.qty || 0) + 1; save(); render(); }
+    else addItem(p.name, p.price, p.qty || 1);
+  });
+
+  // 저장한 목록
+  function renderLists() {
+    var keys = Object.keys(S.lists);
+    $('lists').innerHTML = keys.length ? keys.map(function (k) {
+      var l = S.lists[k], tot = l.items.reduce(function (s, i) { return s + (i.on ? (+i.price || 0) * (+i.qty || 0) : 0); }, 0);
+      return '<div class="p"><div class="t">' + esc(k) + '<small>' + l.items.length + '개 품목 · ' + won(tot) + '</small></div>' +
+        '<span style="display:flex;gap:4px;flex:none"><button type="button" data-load="' + esc(k) + '">불러오기</button><button type="button" class="ghost del" data-rm="' + esc(k) + '">삭제</button></span></div>';
+    }).join('') : '<div class="empty">저장한 목록이 없습니다.</div>';
+  }
+  $('lSave').addEventListener('click', function () {
+    var n = $('lName').value.trim();
+    if (!n) { $('lMsg').textContent = '목록 이름을 입력하세요.'; return; }
+    if (!S.items.length) { $('lMsg').textContent = '저장할 품목이 없습니다.'; return; }
+    S.lists[n] = { budget: S.budget, items: JSON.parse(JSON.stringify(S.items)) };
+    save(); renderLists(); $('lMsg').textContent = '“' + n + '” 목록을 저장했습니다.'; $('lName').value = '';
+  });
+  $('lists').addEventListener('click', function (e) {
+    var ld = e.target.getAttribute && e.target.getAttribute('data-load'), rm = e.target.getAttribute && e.target.getAttribute('data-rm');
+    if (ld && S.lists[ld]) {
+      S.items = JSON.parse(JSON.stringify(S.lists[ld].items)).map(function (i) { i.id = uid(); return i; });
+      S.budget = S.lists[ld].budget || S.budget; $('budget').value = S.budget || ''; save(); render();
+      $('lMsg').textContent = '“' + ld + '” 목록을 불러왔습니다.'; window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (rm) {
+      if (e.target.getAttribute('data-armed') !== '1') { e.target.setAttribute('data-armed', '1'); e.target.textContent = '정말 삭제'; return; }
+      delete S.lists[rm]; save(); renderLists();
+    }
+  });
+
+  // 가격표 JSON
+  $('jExport').addEventListener('click', function () {
+    var arr = Object.keys(S.prices).sort().map(function (k) { var p = S.prices[k]; return { name: p.name, unitPrice: p.price, qty: p.qty || 1 }; });
+    $('jbox').value = JSON.stringify(arr, null, 1); $('jMsg').textContent = arr.length + '개 품목입니다.';
+  });
+  $('jCopy').addEventListener('click', function () {
+    var box = $('jbox'); if (!box.value) $('jExport').click();
+    box.select();
+    var done = function () { $('jMsg').textContent = '복사했습니다.'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(box.value).then(done, function () { document.execCommand('copy'); done(); });
+    else { document.execCommand('copy'); done(); }
+  });
+  $('jImport').addEventListener('click', function () {
+    var arr;
+    try { arr = JSON.parse($('jbox').value); } catch (e) { $('jMsg').textContent = 'JSON 형식이 올바르지 않습니다.'; return; }
+    if (!Array.isArray(arr)) { $('jMsg').textContent = '목록 형태([...])여야 합니다.'; return; }
+    var n = 0;
+    arr.forEach(function (r) {
+      var name = r && (r.name || r.item), price = +(r && (r.unitPrice != null ? r.unitPrice : r.price));
+      if (!name || !(price >= 0)) return;
+      S.prices[norm(name)] = { name: String(name), price: price, qty: Math.max(1, Math.round(+(r.qty || r.avgQty) || 1)) }; n++;
+    });
+    save(); renderPriceList(); renderNames(); $('jMsg').textContent = n + '개 품목을 가져왔습니다.';
+  });
+
+  load();
+  $('budget').value = S.budget || '';
+  renderNames(); renderPriceList(); renderLists(); render(); updatePad();
+
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+  }
+})();
+</script>
+</body>
+</html>
