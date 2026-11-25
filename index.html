@@ -100,6 +100,15 @@ textarea{font:inherit;font-size:13px;width:100%;min-height:96px;background:var(-
 .msg{font-size:13px;color:var(--muted);min-height:1em}
 .foot{text-align:center;color:var(--muted);font-size:12px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.inst{position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:20;max-width:544px;margin:0 auto;
+  background:var(--surface);border:1px solid var(--accent);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18);
+  padding:12px 12px 12px 14px;display:flex;gap:10px;align-items:center}
+.inst[hidden]{display:none}
+.inst img{width:40px;height:40px;border-radius:9px;flex:none}
+.inst .tx{flex:1;min-width:0;font-size:14px;line-height:1.4}
+.inst .tx b{display:block;font-size:15px}
+.inst .primary{white-space:nowrap}
+.inst .x{min-height:36px;width:36px;padding:0;border:0;background:none;color:var(--muted);font-size:18px}
 </style>
 </head>
 <body>
@@ -417,6 +426,62 @@ textarea{font:inherit;font-size:13px;width:100%;min-height:96px;background:var(-
   if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
   }
+})();
+</script>
+<div class="inst" id="inst" hidden role="dialog" aria-label="앱 설치 안내">
+  <img src="icon-192.png" alt="">
+  <div class="tx"><b>마트계산기 앱 설치</b><span id="instMsg">홈 화면에 추가하면 앱처럼 바로 열 수 있어요.</span></div>
+  <button type="button" class="primary" id="instGo">설치</button>
+  <button type="button" class="x" id="instX" aria-label="닫기">✕</button>
+</div>
+<script>
+/* 설치 안내: 앱으로 설치되어 있지 않은 스마트폰에서만 띄웁니다. 닫으면 3일 동안 다시 띄우지 않습니다. */
+(function () {
+  var ua = navigator.userAgent || '';
+  var mobile = /Android|iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  if (!mobile || standalone) return;
+  var K = 'martcalc.instHide';
+  try { if (Date.now() < +localStorage.getItem(K)) return; } catch (e) {}
+
+  var box = document.getElementById('inst'), msg = document.getElementById('instMsg'), go = document.getElementById('instGo');
+  var ios = /iPhone|iPad|iPod/i.test(ua) || navigator.platform === 'MacIntel';
+  var kakao = /KAKAOTALK/i.test(ua), inapp = kakao || /NAVER|Instagram|FBAN|FBAV|Line\//i.test(ua);
+  var deferred = null;
+
+  function show(text, btn) { msg.textContent = text; if (btn) { go.textContent = btn; go.hidden = false; } else go.hidden = true; box.hidden = false; }
+  function hide(days) { box.hidden = true; try { localStorage.setItem(K, String(Date.now() + days * 864e5)); } catch (e) {} }
+  document.getElementById('instX').addEventListener('click', function () { hide(3); });
+
+  if (inapp) {
+    // 카카오톡 등 앱 안의 브라우저에서는 설치가 안 되므로 기본 브라우저로 열도록 안내
+    if (kakao) show('카카오톡 안에서는 설치가 안 돼요.', '브라우저로 열기');
+    else if (!ios) show('이 화면에서는 설치가 안 돼요.', 'Chrome으로 열기');
+    else show('이 화면에서는 설치가 안 돼요. Safari로 열어 공유 버튼 → "홈 화면에 추가"를 누르세요.');
+    go.addEventListener('click', function () {
+      var url = location.href;
+      if (kakao) location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(url);
+      else location.href = 'intent://' + url.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end';
+    });
+    return;
+  }
+
+  if (ios) {
+    show('아래 공유 버튼(□↑)을 누르고 "홈 화면에 추가"를 선택하세요.');
+    return;
+  }
+
+  // 안드로이드 Chrome·삼성 인터넷: 브라우저가 설치 가능하다고 알려 줄 때 설치 버튼을 띄움
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault(); deferred = e;
+    show('홈 화면에 추가하면 앱처럼 바로 열 수 있어요.', '설치');
+  });
+  go.addEventListener('click', function () {
+    if (!deferred) return;
+    deferred.prompt();
+    deferred.userChoice.then(function (r) { deferred = null; if (r && r.outcome === 'accepted') box.hidden = true; else hide(3); });
+  });
+  window.addEventListener('appinstalled', function () { box.hidden = true; });
 })();
 </script>
 </body>
